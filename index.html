@@ -3,36 +3,30 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Forest Adventure</title>
-
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forest Adventure - Level 2</title>
 <style>
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: #111827;
+  background: #101827;
   color: white;
   font-family: Arial, sans-serif;
   text-align: center;
 }
 
 h1 {
-  margin: 16px 0 5px;
   color: #facc15;
+  margin: 12px;
 }
 
-p {
-  margin: 5px 0 12px;
-  color: #d1d5db;
-}
+p { color: #cbd5e1; }
 
 canvas {
-  width: min(95vw, 800px);
+  width: min(96vw, 900px);
   height: auto;
-  border: 4px solid #d6b36a;
+  border: 4px solid #b58b48;
   border-radius: 8px;
   display: block;
   margin: auto;
@@ -40,8 +34,8 @@ canvas {
 }
 
 .controls {
-  color: #9ca3af;
-  margin: 12px;
+  padding: 10px;
+  color: #94a3b8;
   font-size: 14px;
 }
 </style>
@@ -49,96 +43,142 @@ canvas {
 
 <body>
 
-<h1>🌲 Forest Adventure 🌲</h1>
-<p>Explore the forest and collect all the coins!</p>
+<h1>⚔️ Forest Adventure II ⚔️</h1>
+<p>Explore the forest, defeat slimes and survive!</p>
 
-<canvas id="game" width="800" height="500"></canvas>
+<canvas id="game" width="900" height="550"></canvas>
 
 <div class="controls">
-  Move: WASD or Arrow Keys
+  WASD / Arrow Keys = Move | SPACE = Attack | R = Restart
 </div>
 
 <script>
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
-const player = {
-  x: 380,
-  y: 250,
-  w: 24,
-  h: 30,
-  speed: 3,
-  facing: "down"
+const WORLD = {
+  width: 2200,
+  height: 1600
 };
 
 const keys = {};
 
-let coinsCollected = 0;
+const player = {
+  x: 400,
+  y: 400,
+  w: 28,
+  h: 34,
+  speed: 3.2,
+  facing: "down",
+  health: 5,
+  maxHealth: 5,
+  attackTimer: 0,
+  attackCooldown: 0,
+  invincible: 0,
+  kills: 0
+};
 
-// Trees
-const trees = [
-  {x: 100, y: 100},
-  {x: 220, y: 80},
-  {x: 650, y: 100},
-  {x: 700, y: 250},
-  {x: 120, y: 350},
-  {x: 300, y: 400},
-  {x: 550, y: 380},
-  {x: 620, y: 300}
-];
+let gameOver = false;
+let victory = false;
 
-// Rocks
-const rocks = [
-  {x: 350, y: 120},
-  {x: 480, y: 200},
-  {x: 200, y: 250},
-  {x: 500, y: 420}
-];
+const camera = { x: 0, y: 0 };
 
-// Coins
-const coins = [
-  {x: 170, y: 170, collected: false},
-  {x: 420, y: 100, collected: false},
-  {x: 600, y: 180, collected: false},
-  {x: 350, y: 330, collected: false},
-  {x: 700, y: 400, collected: false},
-  {x: 450, y: 350, collected: false}
-];
+const trees = [];
+const rocks = [];
+const enemies = [];
 
-window.addEventListener("keydown", (e) => {
-  keys[e.key.toLowerCase()] = true;
+function random(min, max) {
+  return Math.random() * (max - min) + min;
+}
 
-  if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+// Generate forest scenery
+for (let i = 0; i < 90; i++) {
+  trees.push({
+    x: random(50, WORLD.width - 100),
+    y: random(50, WORLD.height - 100)
+  });
+}
+
+for (let i = 0; i < 65; i++) {
+  rocks.push({
+    x: random(50, WORLD.width - 80),
+    y: random(50, WORLD.height - 80)
+  });
+}
+
+// Create slimes
+for (let i = 0; i < 12; i++) {
+  enemies.push({
+    x: random(150, WORLD.width - 150),
+    y: random(150, WORLD.height - 150),
+    w: 28,
+    h: 24,
+    speed: random(0.7, 1.2),
+    health: 2,
+    alive: true,
+    hitFlash: 0
+  });
+}
+
+window.addEventListener("keydown", e => {
+  const key = e.key.toLowerCase();
+
+  if (["arrowup", "arrowdown", "arrowleft", "arrowright", " "].includes(key)) {
     e.preventDefault();
   }
+
+  keys[key] = true;
+
+  if (key === " " && !gameOver && !victory) attack();
+  if (key === "r") restart();
 });
 
-window.addEventListener("keyup", (e) => {
+window.addEventListener("keyup", e => {
   keys[e.key.toLowerCase()] = false;
 });
 
-function collides(x, y, w, h, obj, ow, oh) {
+function rectCollision(x, y, w, h, obj) {
   return (
-    x < obj.x + ow &&
+    x < obj.x + obj.w &&
     x + w > obj.x &&
-    y < obj.y + oh &&
+    y < obj.y + obj.h &&
     y + h > obj.y
   );
 }
 
 function blocked(x, y) {
-  // Tree collision
+  const box = { x, y, w: player.w, h: player.h };
+
   for (const tree of trees) {
-    if (collides(x, y, player.w, player.h, 
-                 {x: tree.x - 15, y: tree.y + 8}, 50, 35)) {
+    const obstacle = {
+      x: tree.x - 18,
+      y: tree.y + 5,
+      w: 36,
+      h: 32
+    };
+
+    if (rectCollision(box.x, box.y, box.w, box.h, obstacle)) {
       return true;
     }
   }
 
-  // Rock collision
   for (const rock of rocks) {
-    if (collides(x, y, player.w, player.h, 
-                 {x: rock.x - 8, y: rock.y - 5}, 32, 25)) {
+    const obstacle = {
+      x: rock.x - 12,
+      y: rock.y - 8,
+      w: 26,
+      h: 22
+    };
+
+    if (rectCollision(box.x, box.y, box.w, box.h, obstacle)) {
+      return true;
+    }
+  }
+
+  for (const enemy of enemies) {
+    if (!enemy.alive) continue;
+
+    if (rectCollision(box.x, box.y, box.w, box.h, enemy)) {
       return true;
     }
   }
@@ -146,7 +186,63 @@ function blocked(x, y) {
   return false;
 }
 
+function attack() {
+  if (player.attackCooldown > 0) return;
+
+  player.attackTimer = 12;
+  player.attackCooldown = 25;
+
+  let range = 48;
+
+  let hitbox = {
+    x: player.x,
+    y: player.y,
+    w: player.w,
+    h: player.h
+  };
+
+  if (player.facing === "up") {
+    hitbox.y -= range;
+    hitbox.h = range;
+  }
+
+  if (player.facing === "down") {
+    hitbox.y += player.h;
+    hitbox.h = range;
+  }
+
+  if (player.facing === "left") {
+    hitbox.x -= range;
+    hitbox.w = range;
+  }
+
+  if (player.facing === "right") {
+    hitbox.x += player.w;
+    hitbox.w = range;
+  }
+
+  for (const enemy of enemies) {
+    if (!enemy.alive) continue;
+
+    if (rectCollision(hitbox.x, hitbox.y, hitbox.w, hitbox.h, enemy)) {
+      enemy.health--;
+      enemy.hitFlash = 8;
+
+      if (enemy.health <= 0) {
+        enemy.alive = false;
+        player.kills++;
+
+        if (player.kills >= enemies.length) {
+          victory = true;
+        }
+      }
+    }
+  }
+}
+
 function update() {
+  if (gameOver || victory) return;
+
   let dx = 0;
   let dy = 0;
 
@@ -170,250 +266,338 @@ function update() {
     player.facing = "right";
   }
 
-  // Prevent faster diagonal movement
-  if (dx !== 0 && dy !== 0) {
+  // Normalize diagonal movement
+  if (dx && dy) {
     dx *= 0.707;
     dy *= 0.707;
   }
 
-  // Horizontal movement
+  // Move player
   if (!blocked(player.x + dx, player.y)) {
     player.x += dx;
   }
 
-  // Vertical movement
   if (!blocked(player.x, player.y + dy)) {
     player.y += dy;
   }
 
-  // Screen boundaries
-  player.x = Math.max(0, Math.min(canvas.width - player.w, player.x));
-  player.y = Math.max(0, Math.min(canvas.height - player.h, player.y));
+  // World boundaries
+  player.x = Math.max(0, Math.min(WORLD.width - player.w, player.x));
+  player.y = Math.max(0, Math.min(WORLD.height - player.h, player.y));
 
-  // Collect coins
-  for (const coin of coins) {
-    if (!coin.collected && collides(
-      player.x, player.y, player.w, player.h,
-      {x: coin.x - 10, y: coin.y - 10}, 20, 20
-    )) {
-      coin.collected = true;
-      coinsCollected++;
+  if (player.attackTimer > 0) player.attackTimer--;
+  if (player.attackCooldown > 0) player.attackCooldown--;
+  if (player.invincible > 0) player.invincible--;
+
+  // Slime AI
+  for (const enemy of enemies) {
+    if (!enemy.alive) continue;
+
+    if (enemy.hitFlash > 0) enemy.hitFlash--;
+
+    const distX = player.x - enemy.x;
+    const distY = player.y - enemy.y;
+    const distance = Math.sqrt(distX * distX + distY * distY);
+
+    // Chase player when nearby
+    if (distance < 280 && distance > 35) {
+      const moveX = (distX / distance) * enemy.speed;
+      const moveY = (distY / distance) * enemy.speed;
+
+      const nextX = enemy.x + moveX;
+      const nextY = enemy.y + moveY;
+
+      // Avoid trees and rocks
+      let blockedEnemy = false;
+
+      for (const tree of trees) {
+        if (rectCollision(nextX, nextY, enemy.w, enemy.h,
+          {x: tree.x - 18, y: tree.y + 5, w: 36, h: 32})) {
+          blockedEnemy = true;
+        }
+      }
+
+      for (const rock of rocks) {
+        if (rectCollision(nextX, nextY, enemy.w, enemy.h,
+          {x: rock.x - 12, y: rock.y - 8, w: 26, h: 22})) {
+          blockedEnemy = true;
+        }
+      }
+
+      if (!blockedEnemy) {
+        enemy.x = nextX;
+        enemy.y = nextY;
+      }
+    }
+
+    // Damage player
+    if (rectCollision(player.x, player.y, player.w, player.h, enemy)) {
+      if (player.invincible <= 0) {
+        player.health--;
+        player.invincible = 80;
+
+        if (player.health <= 0) {
+          gameOver = true;
+        }
+      }
     }
   }
+
+  // Camera follows player
+  camera.x = player.x + player.w / 2 - canvas.width / 2;
+  camera.y = player.y + player.h / 2 - canvas.height / 2;
+
+  camera.x = Math.max(0, Math.min(WORLD.width - canvas.width, camera.x));
+  camera.y = Math.max(0, Math.min(WORLD.height - canvas.height, camera.y));
 }
 
 function drawGrass() {
-  // Main grass
-  ctx.fillStyle = "#4b8b38";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#45843a";
+  ctx.fillRect(0, 0, WORLD.width, WORLD.height);
 
-  // Grass details
-  for (let x = 0; x < canvas.width; x += 35) {
-    for (let y = 0; y < canvas.height; y += 35) {
-      ctx.fillStyle = ((x + y) % 70 === 0) ? "#559541" : "#438132";
-      ctx.fillRect(x + 5, y + 8, 3, 3);
-      ctx.fillRect(x + 20, y + 22, 3, 3);
+  // Repeating grass pattern
+  for (let x = 0; x < WORLD.width; x += 40) {
+    for (let y = 0; y < WORLD.height; y += 40) {
+      ctx.fillStyle = ((x + y) % 80 === 0) ? "#4d913f" : "#3d7934";
+      ctx.fillRect(x + 8, y + 12, 3, 3);
+      ctx.fillRect(x + 25, y + 28, 3, 3);
     }
-  }
-
-  // Decorative flowers
-  for (let i = 0; i < 18; i++) {
-    let x = (i * 137 + 40) % 780;
-    let y = (i * 91 + 30) % 470;
-
-    ctx.fillStyle = "#f9e8a0";
-    ctx.fillRect(x, y, 4, 4);
   }
 }
 
 function drawTree(tree) {
-  // Shadow
-  ctx.fillStyle = "#315d28";
-  ctx.beginPath();
-  ctx.ellipse(tree.x, tree.y + 25, 28, 12, 0, 0, Math.PI * 2);
-  ctx.fill();
-
   // Trunk
-  ctx.fillStyle = "#79502d";
-  ctx.fillRect(tree.x - 8, tree.y + 5, 16, 25);
+  ctx.fillStyle = "#754321";
+  ctx.fillRect(tree.x - 8, tree.y + 4, 16, 24);
 
-  // Tree leaves
-  ctx.fillStyle = "#245c32";
+  // Leaves
+  ctx.fillStyle = "#20582e";
   ctx.beginPath();
-  ctx.arc(tree.x, tree.y, 28, 0, Math.PI * 2);
+  ctx.arc(tree.x, tree.y, 27, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#398344";
+  ctx.fillStyle = "#347c3e";
   ctx.beginPath();
-  ctx.arc(tree.x - 10, tree.y - 8, 20, 0, Math.PI * 2);
+  ctx.arc(tree.x - 10, tree.y - 10, 20, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = "#55a34b";
+  ctx.fillStyle = "#55a64b";
   ctx.beginPath();
-  ctx.arc(tree.x + 9, tree.y - 10, 16, 0, Math.PI * 2);
+  ctx.arc(tree.x + 9, tree.y - 12, 16, 0, Math.PI * 2);
   ctx.fill();
-
-  // Highlight
-  ctx.fillStyle = "#78ba56";
-  ctx.fillRect(tree.x - 10, tree.y - 17, 8, 5);
 }
 
 function drawRock(rock) {
-  // Shadow
-  ctx.fillStyle = "#52604a";
+  ctx.fillStyle = "#737e85";
   ctx.beginPath();
-  ctx.ellipse(rock.x, rock.y + 9, 19, 9, 0, 0, Math.PI * 2);
+  ctx.ellipse(rock.x, rock.y, 16, 12, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Rock
-  ctx.fillStyle = "#858c91";
-  ctx.beginPath();
-  ctx.moveTo(rock.x - 15, rock.y + 5);
-  ctx.lineTo(rock.x - 10, rock.y - 10);
-  ctx.lineTo(rock.x + 2, rock.y - 16);
-  ctx.lineTo(rock.x + 14, rock.y - 7);
-  ctx.lineTo(rock.x + 17, rock.y + 5);
-  ctx.closePath();
-  ctx.fill();
-
-  // Highlight
-  ctx.fillStyle = "#b5bdc3";
-  ctx.fillRect(rock.x - 6, rock.y - 8, 8, 4);
-}
-
-function drawCoin(coin) {
-  if (coin.collected) return;
-
-  // Coin shadow
-  ctx.fillStyle = "#8b6510";
-  ctx.beginPath();
-  ctx.arc(coin.x + 2, coin.y + 2, 9, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Coin
-  ctx.fillStyle = "#facc15";
-  ctx.beginPath();
-  ctx.arc(coin.x, coin.y, 8, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.strokeStyle = "#fff2a6";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  ctx.fillStyle = "#fff4b0";
-  ctx.fillRect(coin.x - 2, coin.y - 4, 3, 8);
+  ctx.fillStyle = "#aeb8bd";
+  ctx.fillRect(rock.x - 7, rock.y - 6, 7, 4);
 }
 
 function drawPlayer() {
-  // Shadow
-  ctx.fillStyle = "rgba(0,0,0,0.25)";
-  ctx.fillRect(player.x + 3, player.y + 25, 20, 6);
+  // Blink while hurt
+  if (player.invincible > 0 && Math.floor(player.invincible / 5) % 2 === 0) {
+    return;
+  }
 
-  // Legs
-  ctx.fillStyle = "#49301e";
-  ctx.fillRect(player.x + 4, player.y + 20, 6, 9);
-  ctx.fillRect(player.x + 14, player.y + 20, 6, 9);
+  const x = player.x;
+  const y = player.y;
+
+  // Shadow
+  ctx.fillStyle = "#244822";
+  ctx.fillRect(x + 3, y + 29, 23, 7);
 
   // Boots
-  ctx.fillStyle = "#6b4225";
-  ctx.fillRect(player.x + 2, player.y + 26, 9, 4);
-  ctx.fillRect(player.x + 13, player.y + 26, 9, 4);
+  ctx.fillStyle = "#704523";
+  ctx.fillRect(x + 3, y + 25, 9, 8);
+  ctx.fillRect(x + 16, y + 25, 9, 8);
 
   // Body
   ctx.fillStyle = "#2563eb";
-  ctx.fillRect(player.x + 3, player.y + 10, 18, 13);
+  ctx.fillRect(x + 4, y + 11, 20, 16);
 
-  // Shirt highlight
   ctx.fillStyle = "#60a5fa";
-  ctx.fillRect(player.x + 5, player.y + 11, 5, 9);
+  ctx.fillRect(x + 6, y + 12, 6, 10);
 
   // Head
-  ctx.fillStyle = "#f1c27d";
-  ctx.fillRect(player.x + 5, player.y + 2, 14, 12);
+  ctx.fillStyle = "#f0c27b";
+  ctx.fillRect(x + 6, y + 3, 16, 12);
 
   // Hair
   ctx.fillStyle = "#713f12";
-  ctx.fillRect(player.x + 4, player.y, 16, 5);
-  ctx.fillRect(player.x + 4, player.y + 2, 4, 7);
+  ctx.fillRect(x + 5, y + 1, 18, 5);
 
-  // Eyes based on direction
-  ctx.fillStyle = "#222";
+  // Hat
+  ctx.fillStyle = "#166534";
+  ctx.fillRect(x + 2, y - 3, 24, 5);
+  ctx.fillRect(x + 7, y - 8, 16, 7);
+
+  ctx.fillStyle = "#4ade80";
+  ctx.fillRect(x + 10, y - 6, 7, 3);
+
+  // Eyes
+  ctx.fillStyle = "#111827";
 
   if (player.facing === "down") {
-    ctx.fillRect(player.x + 8, player.y + 8, 2, 2);
-    ctx.fillRect(player.x + 15, player.y + 8, 2, 2);
-  } else if (player.facing === "up") {
-    ctx.fillStyle = "#713f12";
-    ctx.fillRect(player.x + 6, player.y + 3, 12, 4);
+    ctx.fillRect(x + 9, y + 9, 2, 2);
+    ctx.fillRect(x + 17, y + 9, 2, 2);
   } else if (player.facing === "left") {
-    ctx.fillRect(player.x + 6, player.y + 8, 2, 2);
+    ctx.fillRect(x + 8, y + 9, 2, 2);
   } else if (player.facing === "right") {
-    ctx.fillRect(player.x + 16, player.y + 8, 2, 2);
+    ctx.fillRect(x + 18, y + 9, 2, 2);
   }
 
-  // Green adventure hat
-  ctx.fillStyle = "#166534";
-  ctx.fillRect(player.x + 2, player.y - 2, 20, 5);
-  ctx.fillRect(player.x + 7, player.y - 7, 12, 7);
+  // Sword attack
+  if (player.attackTimer > 0) {
+    ctx.fillStyle = "#e5e7eb";
 
-  ctx.fillStyle = "#22c55e";
-  ctx.fillRect(player.x + 9, player.y - 6, 6, 3);
+    if (player.facing === "up") {
+      ctx.fillRect(x + 10, y - 35, 8, 36);
+    }
+
+    if (player.facing === "down") {
+      ctx.fillRect(x + 10, y + 32, 8, 36);
+    }
+
+    if (player.facing === "left") {
+      ctx.fillRect(x - 35, y + 12, 36, 8);
+    }
+
+    if (player.facing === "right") {
+      ctx.fillRect(x + 27, y + 12, 36, 8);
+    }
+  }
+}
+
+function drawEnemy(enemy) {
+  if (!enemy.alive) return;
+
+  // Shadow
+  ctx.fillStyle = "#24542d";
+  ctx.fillRect(enemy.x + 3, enemy.y + 20, 25, 6);
+
+  // Slime body
+  ctx.fillStyle = enemy.hitFlash > 0 ? "#ffffff" : "#22c55e";
+  ctx.beginPath();
+  ctx.ellipse(enemy.x + 14, enemy.y + 12, 14, 12, 0, Math.PI, 0);
+  ctx.fill();
+  ctx.fillRect(enemy.x, enemy.y + 12, 28, 8);
+
+  // Eyes
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(enemy.x + 6, enemy.y + 9, 6, 7);
+  ctx.fillRect(enemy.x + 17, enemy.y + 9, 6, 7);
+
+  ctx.fillStyle = "#111827";
+  ctx.fillRect(enemy.x + 8, enemy.y + 11, 3, 4);
+  ctx.fillRect(enemy.x + 19, enemy.y + 11, 3, 4);
 }
 
 function drawHUD() {
-  // HUD panel
-  ctx.fillStyle = "rgba(20, 35, 20, 0.85)";
-  ctx.fillRect(12, 12, 170, 42);
+  // Panel
+  ctx.fillStyle = "rgba(15,23,42,0.85)";
+  ctx.fillRect(15, 15, 220, 100);
 
   ctx.strokeStyle = "#d6b36a";
   ctx.lineWidth = 2;
-  ctx.strokeRect(12, 12, 170, 42);
+  ctx.strokeRect(15, 15, 220, 100);
 
-  // Coin counter
+  // Health
+  ctx.font = "22px Arial";
+  ctx.fillStyle = "#ffffff";
+  ctx.fillText("Health:", 28, 45);
+
+  for (let i = 0; i < player.maxHealth; i++) {
+    ctx.fillStyle = i < player.health ? "#ef4444" : "#4b5563";
+    ctx.fillText("♥", 95 + i * 23, 45);
+  }
+
+  // Kills
   ctx.fillStyle = "#facc15";
-  ctx.beginPath();
-  ctx.arc(32, 33, 9, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.font = "18px Arial";
+  ctx.fillText("Slimes: " + player.kills + " / " + enemies.length, 28, 82);
+
+  // Map location
+  ctx.fillStyle = "#d1d5db";
+  ctx.font = "12px Arial";
+  ctx.fillText("Forest Explorer", 28, 101);
+}
+
+function drawOverlay(title, subtitle) {
+  ctx.fillStyle = "rgba(0,0,0,0.75)";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.textAlign = "center";
+
+  ctx.fillStyle = "#facc15";
+  ctx.font = "bold 42px Arial";
+  ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 20);
 
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 18px Arial";
-  ctx.fillText("Coins: " + coinsCollected + " / " + coins.length, 50, 39);
+  ctx.font = "20px Arial";
+  ctx.fillText(subtitle, canvas.width / 2, canvas.height / 2 + 30);
 
-  // Victory message
-  if (coinsCollected === coins.length) {
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
-    ctx.fillRect(180, 190, 440, 100);
-
-    ctx.fillStyle = "#facc15";
-    ctx.font = "bold 30px Arial";
-    ctx.fillText("YOU FOUND ALL THE COINS!", 205, 245);
-
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "16px Arial";
-    ctx.fillText("You're a forest treasure hunter!", 280, 272);
-  }
+  ctx.textAlign = "left";
 }
 
 function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.save();
+
+  // Camera
+  ctx.translate(-camera.x, -camera.y);
+
   drawGrass();
 
-  // Draw scenery
   for (const tree of trees) drawTree(tree);
   for (const rock of rocks) drawRock(rock);
-  for (const coin of coins) drawCoin(coin);
+  for (const enemy of enemies) drawEnemy(enemy);
 
   drawPlayer();
+
+  ctx.restore();
+
   drawHUD();
+
+  if (gameOver) {
+    drawOverlay("GAME OVER", "Press R to try again");
+  }
+
+  if (victory) {
+    drawOverlay("YOU WIN!", "You defeated every slime! Press R to play again");
+  }
 }
 
-function gameLoop() {
+function restart() {
+  player.x = 400;
+  player.y = 400;
+  player.health = player.maxHealth;
+  player.kills = 0;
+  player.invincible = 0;
+  player.attackTimer = 0;
+  player.attackCooldown = 0;
+
+  for (const enemy of enemies) {
+    enemy.alive = true;
+    enemy.health = 2;
+    enemy.hitFlash = 0;
+  }
+
+  gameOver = false;
+  victory = false;
+}
+
+function loop() {
   update();
   draw();
-  requestAnimationFrame(gameLoop);
+  requestAnimationFrame(loop);
 }
 
-gameLoop();
+loop();
 </script>
-
 </body>
 </html>

@@ -1,193 +1,84 @@
 
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>2D Adventure</title>
-<style>
-body {
-    margin: 0;
-    background: #18243b;
-    color: white;
-    text-align: center;
-    font-family: Arial;
-}
-h1 { color: gold; }
-canvas {
-    width: 95%;
-    max-width: 800px;
-    border: 4px solid white;
-    border-radius: 10px;
-}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2D Adventure Game</title>
+  <style>
+    body {
+      margin: 0;
+      background: #1b1b2f;
+      color: white;
+      font-family: Arial, sans-serif;
+      text-align: center;
+    }
+
+    h1 {
+      margin: 20px;
+    }
+
+    canvas {
+      background: #303850;
+      border: 3px solid white;
+      display: block;
+      margin: auto;
+    }
+  </style>
 </head>
 <body>
 
-<h1>⚔️ 2D ADVENTURE ⚔️</h1>
-<p>Move: A/D or arrows | Jump: SPACE</p>
-<canvas id="game" width="800" height="450"></canvas>
+  <h1>My 2D Adventure Game</h1>
+  <p>Use WASD or arrow keys to move.</p>
 
-<script>
-const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+  <canvas id="game" width="800" height="500"></canvas>
 
-let player = {
- x: 50, y: 330, w: 35, h: 45,
- vy: 0, speed: 5, grounded: false
-};
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
 
-let keys = {};
-let score = 0;
-let lives = 3;
-let gameOver = false;
-let won = false;
+    const player = {
+      x: 100,
+      y: 100,
+      size: 30,
+      speed: 4
+    };
 
-let coins = [
- {x:180,y:340},
- {x:300,y:280},
- {x:450,y:340},
- {x:600,y:300},
- {x:720,y:350}
-];
+    const keys = {};
 
-let enemy = {x:400,y:365,dir:1};
-let gravity = 0.6;
+    window.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+    window.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
-document.addEventListener("keydown", e => {
- keys[e.key.toLowerCase()] = true;
- if([" ","arrowup","arrowleft","arrowright"].includes(e.key.toLowerCase()))
- e.preventDefault();
-});
+    function update() {
+      if (keys["w"] || keys["arrowup"]) player.y -= player.speed;
+      if (keys["s"] || keys["arrowdown"]) player.y += player.speed;
+      if (keys["a"] || keys["arrowleft"]) player.x -= player.speed;
+      if (keys["d"] || keys["arrowright"]) player.x += player.speed;
 
-document.addEventListener("keyup", e => {
- keys[e.key.toLowerCase()] = false;
-});
+      player.x = Math.max(0, Math.min(canvas.width - player.size, player.x));
+      player.y = Math.max(0, Math.min(canvas.height - player.size, player.y));
+    }
 
-function restart() {
- player.x=50;
- player.y=330;
- player.vy=0;
- score=0;
- lives=3;
- gameOver=false;
- won=false;
- coins=[
- {x:180,y:340},{x:300,y:280},
- {x:450,y:340},{x:600,y:300},{x:720,y:350}
- ];
- enemy.x=400;
-}
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-function update() {
- if(gameOver || won) {
-  if(keys["r"]) restart();
-  return;
- }
+      // Draw player
+      ctx.fillStyle = "#4ade80";
+      ctx.fillRect(player.x, player.y, player.size, player.size);
 
- if(keys["a"] || keys["arrowleft"]) player.x-=player.speed;
- if(keys["d"] || keys["arrowright"]) player.x+=player.speed;
+      // Draw ground
+      ctx.fillStyle = "#252b40";
+      ctx.fillRect(0, 450, 800, 50);
+    }
 
- if((keys[" "] || keys["w"] || keys["arrowup"]) && player.grounded) {
-  player.vy=-13;
-  player.grounded=false;
- }
+    function gameLoop() {
+      update();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
 
- player.vy+=gravity;
- player.y+=player.vy;
+    gameLoop();
+  </script>
 
- if(player.y+player.h>=400) {
-  player.y=400-player.h;
-  player.vy=0;
-  player.grounded=true;
- }
-
- player.x=Math.max(0,Math.min(765,player.x));
-
- enemy.x+=3*enemy.dir;
- if(enemy.x>750 || enemy.x<300) enemy.dir*=-1;
-
- coins=coins.filter(c=>{
-  let hit=player.x<c.x+15 &&
-  player.x+player.w>c.x &&
-  player.y<c.y+15 &&
-  player.y+player.h>c.y;
-  if(hit) score+=10;
-  return !hit;
- });
-
- let hit=player.x<enemy.x+35 &&
- player.x+player.w>enemy.x &&
- player.y<enemy.y+35 &&
- player.y+player.h>enemy.y;
-
- if(hit) {
-  lives--;
-  player.x=50;
-  player.y=330;
-  player.vy=0;
-  if(lives<=0) gameOver=true;
- }
-
- if(coins.length===0) won=true;
-}
-
-function draw() {
- ctx.fillStyle="#70c5ff";
- ctx.fillRect(0,0,800,450);
-
- // Clouds
- ctx.fillStyle="white";
- ctx.beginPath();
- ctx.arc(150,80,25,0,Math.PI*2);
- ctx.arc(180,80,30,0,Math.PI*2);
- ctx.fill();
-
- // Ground
- ctx.fillStyle="#269b38";
- ctx.fillRect(0,400,800,50);
-
- // Player
- ctx.fillStyle="#2455ff";
- ctx.fillRect(player.x,player.y,player.w,player.h);
- ctx.fillStyle="white";
- ctx.fillRect(player.x+22,player.y+8,7,7);
-
- // Coins
- ctx.fillStyle="gold";
- coins.forEach(c=>{
-  ctx.beginPath();
-  ctx.arc(c.x,c.y,12,0,Math.PI*2);
-  ctx.fill();
- });
-
- // Enemy
- ctx.fillStyle="red";
- ctx.fillRect(enemy.x,enemy.y,35,35);
-
- // Score and lives
- ctx.fillStyle="black";
- ctx.font="23px Arial";
- ctx.fillText("Score: "+score,20,30);
- ctx.fillText("Lives: "+lives,680,30);
-
- if(gameOver || won) {
-  ctx.fillStyle="black";
-  ctx.fillRect(180,150,440,130);
-  ctx.fillStyle="gold";
-  ctx.font="35px Arial";
-  ctx.fillText(won?"YOU WIN!":"GAME OVER!",280,205);
-  ctx.font="20px Arial";
-  ctx.fillText("Press R to restart",310,245);
- }
-}
-
-function loop() {
- update();
- draw();
- requestAnimationFrame(loop);
-}
-
-loop();
-</script>
 </body>
 </html>
